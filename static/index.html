@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>DMHY 追番助手</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">DMHY WORKBOOK</p>
+        <h1>DMHY 追番助手</h1>
+      </div>
+      <div class="header-actions">
+        <button class="version-button" id="versionButton" type="button">更新日志</button>
+        <div class="status-chip" id="headerStatus" data-status="idle">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>准备就绪</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel-card follows-panel" id="followsSection" aria-labelledby="followsHeading">
+      <div class="recent-toolbar">
+        <div class="follows-title-group">
+          <div class="results-title">
+            <p class="section-kicker">追番动态</p>
+            <h2 id="followsHeading">追番更新中 <span id="followsCount">0</span></h2>
+          </div>
+          <button class="secondary-button" id="copyAllFollowsButton" type="button">复制所有磁链</button>
+        </div>
+        <div class="follows-controls">
+          <div class="segmented follows-presets" id="followsPresets" aria-label="追番几日内快捷选项">
+            <button type="button" data-fdays="3">3 天</button>
+            <button type="button" data-fdays="7" class="active">7 天</button>
+            <button type="button" data-fdays="14">14 天</button>
+            <button type="button" data-fdays="31">31 天</button>
+          </div>
+          <button class="secondary-button" id="recentRefresh" type="button">刷新</button>
+        </div>
+      </div>
+      <div class="table-shell follows-shell">
+        <div class="result-table" role="table" aria-label="追番更新列表">
+          <div class="table-header" role="row">
+            <span role="columnheader">选择</span>
+            <span role="columnheader">字幕组</span>
+            <span role="columnheader">作品与集数</span>
+            <span role="columnheader">编码</span>
+            <span role="columnheader">语言</span>
+            <span role="columnheader">发布时间</span>
+            <span role="columnheader">大小</span>
+            <span role="columnheader">状态</span>
+            <span role="columnheader">操作</span>
+          </div>
+          <div id="followsRows"></div>
+        </div>
+        <div class="follows-columns" id="followsColumns" hidden>
+          <div class="follows-col">
+            <div class="follows-col-title">
+              <span id="followsDoneLabel">7 日内完成</span>
+              <button class="follows-copy-btn" id="followsDoneCopy" type="button">复制磁链</button>
+            </div>
+            <div class="follows-col-scroll" id="followsDoneCol"></div>
+          </div>
+          <div class="follows-col">
+            <div class="follows-col-title">已追番</div>
+            <div class="follows-col-scroll" id="followsAllCol"></div>
+          </div>
+        </div>
+        <div class="empty-state" id="followsEmpty">
+          <strong>还没有追番</strong>
+          <span>在列表中点击“追番”，有更新的作品会显示在这里。</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="run-status" id="runStatus" data-status="idle" aria-live="polite">
+      <div class="run-copy">
+        <span class="run-label">当前状态</span>
+        <strong id="statusMessage">准备就绪</strong>
+        <span id="statusMeta">等待下一次更新</span>
+      </div>
+      <div class="progress-track" aria-hidden="true">
+        <span id="progressBar"></span>
+      </div>
+      <p class="error-message" id="errorMessage" hidden></p>
+    </section>
+
+    <section class="panel-card recent-panel" aria-labelledby="recentHeading">
+      <div class="recent-toolbar">
+        <div class="results-title">
+          <p class="section-kicker">按时间浏览</p>
+          <h2 id="recentHeading">近期发布 <span id="recentCount">0</span></h2>
+        </div>
+        <div class="recent-controls">
+          <div class="recent-group-filter filter-hideable" role="group" aria-label="按编码筛选">
+            <label class="filter-check">
+              <input type="radio" name="recentEncoding" value="" checked>
+              <span>全部</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentEncoding" value="AV1">
+              <span>AV1</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentEncoding" value="X265">
+              <span>X265</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentEncoding" value="X264">
+              <span>X264</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentEncoding" value="VP9">
+              <span>VP9</span>
+            </label>
+          </div>
+          <div class="recent-group-filter filter-hideable" role="group" aria-label="按语言筛选">
+            <label class="filter-check">
+              <input type="radio" name="recentLanguage" value="" checked>
+              <span>全部</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentLanguage" value="简体">
+              <span>简体</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentLanguage" value="繁体">
+              <span>繁体</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentLanguage" value="日文">
+              <span>日文</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentLanguage" value="无字幕">
+              <span>无字幕</span>
+            </label>
+          </div>
+          <div class="segmented recent-presets filter-hideable" id="recentPresets" aria-label="近期天数快捷选项">
+            <button type="button" data-days="3">3 天</button>
+            <button type="button" data-days="7" class="active">7 天</button>
+            <button type="button" data-days="14">14 天</button>
+            <button type="button" data-days="31">31 天</button>
+          </div>
+          <label class="number-field recent-days-field filter-hideable">
+            <span class="sr-only">自定义天数</span>
+            <span class="number-input-wrap compact">
+              <input id="recentDaysInput" type="number" min="1" max="365" value="7" inputmode="numeric">
+              <span>天</span>
+            </span>
+          </label>
+          <label class="search-field filter-hideable" title="搜索已加载的全部番剧">
+            <span class="sr-only">搜索已加载的番剧</span>
+            <input id="recentSearchInput" type="search" placeholder="搜索番剧名称 / 集数…" autocomplete="off" enterkeyhint="search">
+          </label>
+          <label class="filter-check site-search-toggle filter-hideable" title="开启后直接搜索 DMHY 全站资源（不受已加载数据限制）">
+            <input type="checkbox" id="siteSearchToggle">
+            <span>全站</span>
+          </label>
+          <div class="recent-group-filter filter-hideable" role="group" aria-label="近期字幕组筛选">
+            <label class="filter-check">
+              <input type="radio" name="recentGroup" value="" checked>
+              <span>全部</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentGroup" value="lolihouse">
+              <span>LoliHouse</span>
+            </label>
+            <label class="filter-check">
+              <input type="radio" name="recentGroup" value="7acg">
+              <span>7³ACG</span>
+            </label>
+          </div>
+          <button class="secondary-button" id="copyRecentButton" type="button" disabled>复制选中</button>
+          <button class="secondary-button update-action" id="updateButton" type="button">更新</button>
+          <a class="secondary-button update-action" id="downloadButton" href="/api/workbook" download>表格</a>
+        </div>
+      </div>
+      <div class="table-shell recent-table-shell recent-scroll">
+        <div class="result-table recent-table" role="table" aria-label="近期发布列表">
+          <div class="table-header" role="row">
+            <span role="columnheader">选择</span>
+            <span role="columnheader">字幕组</span>
+            <span role="columnheader">作品与集数</span>
+            <span role="columnheader">编码</span>
+            <span role="columnheader">语言</span>
+            <span role="columnheader">发布时间</span>
+            <span role="columnheader">大小</span>
+            <span role="columnheader">状态</span>
+            <span role="columnheader">操作</span>
+          </div>
+          <div id="recentRows"></div>
+        </div>
+        <div class="empty-state" id="recentEmpty">
+          <strong>近期没有新增发布</strong>
+          <span>选择其他天数或先执行一次更新。</span>
+        </div>
+      </div>
+      <div class="pagination-bar" id="recentPagination" hidden>
+        <button class="page-button" id="recentPrev" type="button">上一页</button>
+        <span class="page-info" id="recentPageInfo">第 1 / 1 页</span>
+        <button class="page-button" id="recentNext" type="button">下一页</button>
+      </div>
+      <p class="recent-meta" id="recentMeta">读取最近 7 天的发布记录</p>
+    </section>
+
+    <details class="logs-panel">
+      <summary>运行记录</summary>
+      <pre id="logOutput">尚无运行记录</pre>
+    </details>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-overlay" id="versionModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="versionModalTitle">
+      <div class="modal-header">
+        <h3 id="versionModalTitle">更新日志 <small id="versionCurrent"></small></h3>
+        <button class="modal-close" id="versionClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" id="versionEntries"></div>
+    </div>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

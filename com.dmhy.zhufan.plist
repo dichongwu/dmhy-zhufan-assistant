@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dmhy.zhufan</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chongwudi/Downloads/LoliHouse/DMHY追番助手/.venv/bin/python</string>
+    <string>/Users/chongwudi/Downloads/LoliHouse/DMHY追番助手/app.py</string>
+    <string>--port</string>
+    <string>8766</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/chongwudi/Downloads/LoliHouse/DMHY追番助手</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/chongwudi/Downloads/LoliHouse/DMHY追番助手/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/chongwudi/Downloads/LoliHouse/DMHY追番助手/server-error.log</string>
+</dict>
+</plist>
