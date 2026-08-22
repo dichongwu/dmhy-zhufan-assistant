@@ -323,7 +323,8 @@ def parse_published(raw: str):
 
 def parse_title(title: str, group_id: str) -> tuple[str, str]:
     text = str(title or "").strip()
-    match = re.match(r"^\[[^\]]+\]\s*", text)
+    # 去掉开头的字幕组标签（兼容半角 [组] 与全角 【组】）
+    match = re.match(r"^[【\[]([^】\]]+)[】\]]\s*", text)
     if match:
         text = text[match.end():]
     if group_id == "7acg":
@@ -334,6 +335,20 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
     else:
         parts = re.split(r"\s+-\s+", text, maxsplit=1)
         if len(parts) == 1:
+            # 旧式全角/半角括号标题：【字幕组】【番名】【集数】【技术信息】
+            bracket_parts = re.findall(r"[【\[]([^】\]]*)[】\]]", text)
+            if bracket_parts:
+                episode = None
+                series_parts = bracket_parts
+                if re.fullmatch(r"(?:第\s*)?\d+(?:\s*[話话])?", bracket_parts[-1].strip()):
+                    episode, series_parts = bracket_parts[-1].strip(), bracket_parts[:-1]
+                elif len(bracket_parts) >= 3 and re.fullmatch(
+                    r"(?:第\s*)?\d+(?:\s*[話话])?", bracket_parts[-2].strip()
+                ):
+                    episode, series_parts = bracket_parts[-2].strip(), bracket_parts[:-2]
+                series = " / ".join(p.strip() for p in series_parts if p.strip())
+                if series:
+                    return series, episode or "完整作品"
             series = re.split(r"\s+\[", text, maxsplit=1)[0].strip()
             return series, "完整作品"
     series = parts[0].strip() if parts else text
@@ -713,7 +728,7 @@ def site_group_id(title: str) -> str:
 
 
 def site_group_label(title: str) -> str:
-    match = re.match(r"^\[([^\]]+)\]", title.strip())
+    match = re.match(r"^[【\[]([^】\]]+)[】\]]", title.strip())
     return match.group(1) if match else "DMHY"
 
 
