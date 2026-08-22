@@ -321,6 +321,33 @@ def parse_published(raw: str):
     return None
 
 
+# 集数片段：44 / 03 / 01-12 / 第44話 / 第5话 / 22.5（季号“第2季”因“季”不匹配而排除）
+_NUMERIC_EPISODE_RE = re.compile(r"(?:第\s*)?\d+(?:\.\d+)?(?:(?:\s*[-~－～]\s*|\s*-\s*)\d+)?(?:\s*[話话集])?")
+# 技术信息标记（不当作番名/集数）：分辨率、封装、编码、语言、字幕类型等
+_TECH_INFO_RE = re.compile(
+    r"(?i)(?:webrip|bluray|bdrip|dvdrip|hevc|h\s*\.?\s*26[45]|av1|vp9|"
+    r"(?:10|8|12)\s*bit|hi10p|hdr(?:10)?|\baac\b|\bflac\b|\bac3\b|\bopus\b|"
+    r"\bmp4\b|\bmkv\b|\bts\b|\bbig5\b|\bgb\b|\bass\b|\bssa\b|"
+    r"\d{3,4}\s*[pP]|内封|外挂|简[繁体]|繁[简体])"
+)
+
+
+def _is_numeric_episode(segment: str) -> bool:
+    return bool(re.fullmatch(_NUMERIC_EPISODE_RE.pattern, segment.strip()))
+
+
+def _is_series_bracket(segment: str) -> bool:
+    """括号内容是否算番名片段（排除数字集数与技术信息）。"""
+    value = segment.strip()
+    if not value:
+        return False
+    if _is_numeric_episode(value):
+        return False
+    if _TECH_INFO_RE.search(value):
+        return False
+    return True
+
+
 def parse_title(title: str, group_id: str) -> tuple[str, str]:
     text = str(title or "").strip()
     # 去掉开头的字幕组标签（兼容半角 [组] 与全角 【组】）
@@ -334,23 +361,28 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
             return series, "完整作品"
     else:
         parts = re.split(r"\s+-\s+", text, maxsplit=1)
-        if len(parts) == 1:
-            # 旧式全角/半角括号标题：【字幕组】【番名】【集数】【技术信息】
-            bracket_parts = re.findall(r"[【\[]([^】\]]*)[】\]]", text)
-            if bracket_parts:
-                episode = None
-                series_parts = bracket_parts
-                if re.fullmatch(r"(?:第\s*)?\d+(?:\s*[話话])?", bracket_parts[-1].strip()):
-                    episode, series_parts = bracket_parts[-1].strip(), bracket_parts[:-1]
-                elif len(bracket_parts) >= 3 and re.fullmatch(
-                    r"(?:第\s*)?\d+(?:\s*[話话])?", bracket_parts[-2].strip()
-                ):
-                    episode, series_parts = bracket_parts[-2].strip(), bracket_parts[:-2]
-                series = " / ".join(p.strip() for p in series_parts if p.strip())
-                if series:
-                    return series, episode or "完整作品"
+        has_dash = len(parts) > 1
+        brackets = re.findall(r"[\[【]([^\]】]+)[\]】]", text)
+        # 集数优先取“数字括号”（任意位置，从后往前找最后一个）：[03] / 【第44話】 / [01-12]
+        episode = ""
+        for cand in reversed(brackets):
+            if _is_numeric_episode(cand):
+                episode = cand.strip()
+                break
+        # 其次取 “ - 数字” 段：去掉其后技术括号后仍为纯数字才算集数
+        if not episode and has_dash:
+            segment = re.split(r"\s+\[", parts[1].strip(), maxsplit=1)[0].strip()
+            if _is_numeric_episode(segment):
+                episode = segment
+        # 番名：有 “ - ” 用前半段；否则用括号片段拼接（排除数字集数与技术段）
+        if has_dash:
+            series = parts[0].strip()
+        elif brackets:
+            series = " / ".join(p for p in brackets if _is_series_bracket(p))
+        else:
             series = re.split(r"\s+\[", text, maxsplit=1)[0].strip()
-            return series, "完整作品"
+        series = series or text
+        return series, episode or "完整作品"
     series = parts[0].strip() if parts else text
     episode = re.split(r"\s+\[", parts[1].strip(), maxsplit=1)[0].strip() if len(parts) > 1 else "完整作品"
     return series, episode
