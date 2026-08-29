@@ -62,6 +62,17 @@ GROUPS = {
         "csv": DATA_DIR / "7acg" / "7acg_topics.csv",
         "extra_args": ["--title-contains", "[7³ACG]", "--group-name", "7³ACG"],
     },
+    "miaomeng": {
+        "label": "喵萌奶茶屋",
+        "source": "https://share.dmhy.org/topics/list/team_id/669",
+        "rss": "https://share.dmhy.org/topics/rss/team_id/669",
+        "sheet": "喵萌奶茶屋",
+        "output_dir": DATA_DIR / "miaomeng",
+        "raw_name": "miaomeng_topics",
+        "grouped_name": "miaomeng_by_series",
+        "csv": DATA_DIR / "miaomeng" / "miaomeng_topics.csv",
+        "extra_args": [],
+    },
 }
 
 STATE_LOCK = threading.Lock()
@@ -328,7 +339,8 @@ _TECH_INFO_RE = re.compile(
     r"(?i)(?:webrip|bluray|bdrip|dvdrip|hevc|h\s*\.?\s*26[45]|av1|vp9|"
     r"(?:10|8|12)\s*bit|hi10p|hdr(?:10)?|\baac\b|\bflac\b|\bac3\b|\bopus\b|"
     r"\bmp4\b|\bmkv\b|\bts\b|\bbig5\b|\bgb\b|\bass\b|\bssa\b|"
-    r"\d{3,4}\s*[pP]|内封|外挂|简[繁体]|繁[简体])"
+    r"\d{3,4}\s*[pP]|内封|外挂|简[繁体]|繁[简体]|"
+    r"简日(?:双语|雙語)?|繁日(?:双语|雙語)?|双语|雙語|简中|繁中)"
 )
 
 
@@ -756,6 +768,8 @@ def site_group_id(title: str) -> str:
         return "lolihouse"
     if title.startswith("[7³ACG]") or title.startswith("[7³ACG]"):
         return "7acg"
+    if "喵萌奶茶屋" in title:
+        return "miaomeng"
     return "site"
 
 
@@ -801,6 +815,8 @@ def dmhy_site_search(query: str, group_id: str, environment: dict) -> tuple[str,
         params["team_id"] = "657"
     elif group_id == "7acg":
         params["user_id"] = "759200"
+    elif group_id == "miaomeng":
+        params["team_id"] = "669"
     page = fetch_url_with_fallback(SITE_SEARCH_URL + "?" + urlencode(params), environment)
     if page is not None:
         try:

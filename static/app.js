@@ -56,6 +56,7 @@ let currentFollowItems = [];
 let currentDoneItems = [];
 const FOLLOWS_STORAGE_KEY = "dmhy.follows";
 const SITE_SEARCH_KEY = "dmhy.siteSearch";
+const GROUP_LABELS = { lolihouse: "LoliHouse", "7acg": "7³ACG", miaomeng: "喵萌奶茶屋" };
 let siteSearch = false;
 try {
   siteSearch = localStorage.getItem(SITE_SEARCH_KEY) === "1";
@@ -119,7 +120,7 @@ function showToast(message) {
 
 function statusMeta(state) {
   if (state.status === "running") {
-    const labels = state.groups.map((id) => id === "7acg" ? "7³ACG" : "LoliHouse").join("、");
+    const labels = state.groups.map((id) => GROUP_LABELS[id] || id).join("、");
     return `${labels} · 最近 ${state.days} 天`;
   }
   if (state.finished_at) {
@@ -512,7 +513,7 @@ async function loadRecent(days, afterLoad) {
     } else if (data.q) {
       elements.recentMeta.textContent = `搜索「${data.q}」共 ${data.total} 条（已加载的全部数据）`;
     } else {
-      const groupLabel = data.groups && data.groups.length ? data.groups.map((id) => id === "7acg" ? "7³ACG" : "LoliHouse").join("、") : "全部";
+      const groupLabel = data.groups && data.groups.length ? data.groups.map((id) => GROUP_LABELS[id] || id).join("、") : "全部";
       elements.recentMeta.textContent = `读取最近 ${data.days} 天（${groupLabel}）的发布记录，共 ${data.total} 条`;
     }
   } catch (error) {
@@ -661,7 +662,7 @@ async function fetchStatus() {
 async function startUpdate() {
   const days = Number(elements.recentDaysInput.value);
   const groupValue = document.querySelector('input[name="recentGroup"]:checked')?.value || "";
-  const groups = groupValue ? [groupValue] : ["lolihouse", "7acg"];
+  const groups = groupValue ? [groupValue] : ["lolihouse", "7acg", "miaomeng"];
   if (!Number.isInteger(days) || days < 1 || days > 365) {
     showToast("更新时间需为 1 到 365 天");
     elements.recentDaysInput.focus();
