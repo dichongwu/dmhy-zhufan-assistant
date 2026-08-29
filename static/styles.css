@@ -899,6 +899,61 @@ main {
   overflow-wrap: anywhere;
 }
 
+/* 字幕组配色：三个跟踪组固定用色，其余按组名哈希取 tone */
+.group-badge.group-lolihouse {
+  border-color: #a9c9b4;
+  background: #edf7f0;
+  color: #0e4d2b;
+}
+
+.group-badge.group-7acg {
+  border-color: #a9c4e6;
+  background: #eaf2fd;
+  color: #2b5d9f;
+}
+
+.group-badge.group-miaomeng {
+  border-color: #cbb4e6;
+  background: #f4eefd;
+  color: #6b46a8;
+}
+
+.group-badge.group-tone-1 {
+  border-color: #9fd0cb;
+  background: #e9f6f4;
+  color: #17655c;
+}
+
+.group-badge.group-tone-2 {
+  border-color: #e2c78f;
+  background: #fbf3e1;
+  color: #8a6116;
+}
+
+.group-badge.group-tone-3 {
+  border-color: #e6aebc;
+  background: #fdeef2;
+  color: #a13d5c;
+}
+
+.group-badge.group-tone-4 {
+  border-color: #aab3e6;
+  background: #eef0fd;
+  color: #3d4da1;
+}
+
+.group-badge.group-tone-5 {
+  border-color: #b9c48f;
+  background: #f4f7e4;
+  color: #5d6b1f;
+}
+
+.group-badge.group-tone-6 {
+  border-color: #cdb09a;
+  background: #f9f1ea;
+  color: #8a5a2e;
+}
+
 .select-cell {
   display: flex;
   align-items: center;
@@ -954,6 +1009,31 @@ main {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 字幕语言配色：简体 / 繁体 / 日文 / 无字幕 各自用色 */
+.release-language.lang-simplified {
+  border-color: #a9c4e6;
+  background: #eaf2fd;
+  color: #2b5d9f;
+}
+
+.release-language.lang-traditional {
+  border-color: #e6b394;
+  background: #fdefe6;
+  color: #a8541f;
+}
+
+.release-language.lang-japanese {
+  border-color: #e6aebc;
+  background: #fdeef2;
+  color: #a13d5c;
+}
+
+.release-language.lang-none {
+  border-color: #d7ddd9;
+  background: #f3f6f4;
+  color: #7c8a83;
 }
 
 .copy-status {

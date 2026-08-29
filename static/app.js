@@ -57,6 +57,20 @@ let currentDoneItems = [];
 const FOLLOWS_STORAGE_KEY = "dmhy.follows";
 const SITE_SEARCH_KEY = "dmhy.siteSearch";
 const GROUP_LABELS = { lolihouse: "LoliHouse", "7acg": "7³ACG", miaomeng: "喵萌奶茶屋" };
+const GROUP_BADGE_CLASSES = { lolihouse: "group-lolihouse", "7acg": "group-7acg", miaomeng: "group-miaomeng" };
+const GROUP_FALLBACK_CLASSES = ["group-tone-1", "group-tone-2", "group-tone-3", "group-tone-4", "group-tone-5", "group-tone-6"];
+const LANGUAGE_BADGE_CLASSES = { 简体: "lang-simplified", 繁体: "lang-traditional", 日文: "lang-japanese", 无字幕: "lang-none" };
+
+function badgeClassForGroup(item) {
+  const known = GROUP_BADGE_CLASSES[item.group_id];
+  if (known) return `group-badge ${known}`;
+  const name = String(item.group || "DMHY");
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) >>> 0;
+  }
+  return `group-badge ${GROUP_FALLBACK_CLASSES[hash % GROUP_FALLBACK_CLASSES.length]}`;
+}
 let siteSearch = false;
 try {
   siteSearch = localStorage.getItem(SITE_SEARCH_KEY) === "1";
@@ -180,7 +194,7 @@ function createResultRow(item, selectedSet, onToggle) {
   selectCell.append(selectBox);
 
   const badge = document.createElement("span");
-  badge.className = "group-badge";
+  badge.className = badgeClassForGroup(item);
   badge.textContent = item.group;
   badge.title = item.group;
 
@@ -197,9 +211,10 @@ function createResultRow(item, selectedSet, onToggle) {
   encoding.className = "release-encoding";
   encoding.textContent = extractEncoding(item.title);
 
+  const languageText = extractLanguage(item.title);
   const language = document.createElement("span");
-  language.className = "release-language";
-  language.textContent = extractLanguage(item.title);
+  language.className = `release-language ${LANGUAGE_BADGE_CLASSES[languageText] || ""}`.trim();
+  language.textContent = languageText;
 
   const date = document.createElement("span");
   date.className = "release-date";
