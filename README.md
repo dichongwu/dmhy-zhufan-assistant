@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **近期发布**：3 / 7 / 14 / 31 天预设 + 自定义 1–365 天窗口；按番剧名称 / 集数 / 字幕组搜索已加载数据；编码（AV1/X265/X264/VP9）、语言（简体/繁体/日文/无字幕）、字幕组筛选；每页 30 条分页。
+- **近期发布**：3 / 7 / 14 / 31 天预设 + 自定义 1–365 天窗口；按番剧名称 / 集数 / 字幕组搜索已加载数据；编码（AV1/X265/X264/VP9）、语言（简体/繁体/日文/无字幕）、字幕组筛选；字幕组与语言徽标按颜色区分（LoliHouse 绿 / 7³ACG 蓝 / 喵萌奶茶屋 紫，简体 蓝 / 繁体 橙 / 日文 粉 / 无字幕 灰，其余字幕组按组名稳定取色）；每页 30 条分页。
 - **全站搜索**：一键切换为实时搜索 DMHY 全站资源（不受已加载数据限制）；DMHY 搜索服务故障（HTTP 500）时自动回退到站点 RSS（仅覆盖最近约 500 条，界面会标注）。结果同样支持复制磁链 / 追番 / 已使用标记。
 - **复制与状态**：勾选多行一键复制磁链（换行连接），单行复制；复制过的资源标记为「已使用」，状态保存在浏览器 localStorage，刷新不丢。
 - **追番**：每行「追番」按钮收藏作品（localStorage）；「追番更新中」面板按 3/7/14/31 日窗口展示有更新的追番作品（动态「N 日内完成」列）；「已追番」列展示全部追番作品；可一键复制窗口内所有磁链。
@@ -47,8 +47,8 @@ python3 app.py --demo        # 不访问网络，用现有 CSV 演示界面
 
 | 文件 | 说明 |
 | --- | --- |
-| `lolihouse_topics.csv` / `7acg/7acg_topics.csv` | 各分组合并后的发布数据（增量更新的持久化层） |
-| `lolihouse_by_series.html` / `7acg/7acg_by_series.html` | 按片名整理的离线 HTML（由脚本生成） |
+| `lolihouse_topics.csv` / `7acg/7acg_topics.csv` / `miaomeng/miaomeng_topics.csv` | 各分组合并后的发布数据（增量更新的持久化层） |
+| `lolihouse_by_series.html` / `7acg/7acg_by_series.html` / `miaomeng/miaomeng_by_series.html` | 按片名整理的离线 HTML（由脚本生成） |
 | `updates.json` | 各分组最后成功更新时间等运行状态 |
 | `DMHY更新表_YYYY-MM-DD.xlsx` | 按需生成的 Excel 工作簿 |
 
@@ -58,6 +58,7 @@ python3 app.py --demo        # 不访问网络，用现有 CSV 演示界面
 | --- | --- | --- |
 | LoliHouse | `team_id/657` | 官方发布页 + 过滤后的 RSS |
 | 7³ACG | `user_id/759200` | 发布者页需 `--title-contains '[7³ACG]'` 过滤（账号含无关发布） |
+| 喵萌奶茶屋 | `team_id/669` | 官方发布页 + 过滤后的 RSS |
 
 ## 网络与故障处理
 
@@ -79,6 +80,12 @@ python3 dmhy_scraper.py "https://share.dmhy.org/topics/list/user_id/759200" \
   --since-days 31 --merge-xlsx \
   --output-dir "/absolute/output/7acg" \
   --xlsx "/absolute/output/DMHY更新表_YYYY-MM-DD.xlsx" --sheet-name "7³ACG"
+
+# 增量刷新 喵萌奶茶屋 并合并进工作簿（team_id 页面为该组专属，无需过滤）
+python3 dmhy_scraper.py "https://share.dmhy.org/topics/list/team_id/669" \
+  --since-days 31 --merge-xlsx \
+  --output-dir "/absolute/output/miaomeng" \
+  --xlsx "/absolute/output/DMHY更新表_YYYY-MM-DD.xlsx" --sheet-name "喵萌奶茶屋"
 
 # 从既有 JSON 重新整理（无需联网）
 python3 dmhy_scraper.py --from-json "/absolute/output/team_topics.json" \
