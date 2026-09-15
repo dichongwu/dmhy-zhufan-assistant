@@ -541,13 +541,23 @@ async function loadRecent(days, afterLoad) {
   }
 }
 
-async function loadFollowRecent() {
+async function loadFollowRecent(attempt = 0) {
   try {
     const response = await fetch("/api/recent?all=1&groups=", { cache: "no-store" });
     if (!response.ok) throw new Error("无法读取追番数据");
     const data = await response.json();
-    followRecent = Array.isArray(data.results) ? data.results : [];
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (!results.length && attempt < 5) {
+      // 后端缓存未预热完成时会返回空列表，稍候重试，避免退回近期发布的 7 天数据导致 31 天窗口显示不全
+      setTimeout(() => loadFollowRecent(attempt + 1), 1000);
+      return;
+    }
+    followRecent = results;
   } catch (error) {
+    if (attempt < 5) {
+      setTimeout(() => loadFollowRecent(attempt + 1), 1000);
+      return;
+    }
     // keep the last known follows data on failure
   }
   renderFollows();
