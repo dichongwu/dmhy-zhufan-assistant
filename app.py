@@ -352,6 +352,10 @@ def parse_published(raw: str):
 
 # 集数片段：44 / 03 / 01-12 / 第44話 / 第5话 / 22.5（季号“第2季”因“季”不匹配而排除）
 _NUMERIC_EPISODE_RE = re.compile(r"(?:第\s*)?\d+(?:\.\d+)?(?:(?:\s*[-~－～]\s*|\s*-\s*)\d+)?(?:\s*[話话集])?")
+# 「- 08 -」式夹注集数（三明治摆烂组等：番名 - 08 - [字幕][技术]）
+_DASH_WRAPPED_EP_RE = re.compile(r"\s+-\s+((?:第\s*)?\d+(?:\.\d+)?(?:(?:\s*[-~－～]\s*|\s*-\s*)\d+)?)\s+-\s")
+# 季节横幅段（喵萌 ★04月新番★），位于括号前时不算番名
+_SEASON_BANNER_RE = re.compile(r"^★.*★$")
 # 技术信息标记（不当作番名/集数）：分辨率、封装、编码、语言、字幕类型等
 _TECH_INFO_RE = re.compile(
     r"(?i)(?:webrip|bluray|bdrip|dvdrip|hevc|h\s*\.?\s*26[45]|av1|vp9|"
@@ -393,24 +397,39 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
         parts = re.split(r"\s+-\s+", text, maxsplit=1)
         has_dash = len(parts) > 1
         brackets = re.findall(r"[\[【]([^\]】]+)[\]】]", text)
-        # 集数优先取“数字括号”（任意位置，从后往前找最后一个）：[03] / 【第44話】 / [01-12]
+        # 集数①：「- 08 -」夹注（番名 - 08 - [字幕]）；② 数字括号（从后往前，
+        # 含「01-12 修正合集」式数字前缀，取数字部分）；③ “ - 数字” 结尾段
         episode = ""
-        for cand in reversed(brackets):
-            if _is_numeric_episode(cand):
-                episode = cand.strip()
-                break
-        # 其次取 “ - 数字” 段：去掉其后技术括号后仍为纯数字才算集数
-        if not episode and has_dash:
-            segment = re.split(r"\s+\[", parts[1].strip(), maxsplit=1)[0].strip()
-            if _is_numeric_episode(segment):
-                episode = segment
-        # 番名：有 “ - ” 用前半段；否则用括号片段拼接（排除数字集数与技术段）
+        dash_ep = _DASH_WRAPPED_EP_RE.search(text)
+        if dash_ep:
+            episode = dash_ep.group(1).strip()
+        else:
+            for cand in reversed(brackets):
+                value = cand.strip()
+                if _is_numeric_episode(value):
+                    episode = value
+                    break
+                prefix = re.match(r"^((?:第\s*)?\d+(?:\.\d+)?(?:\s*[-~－～]\s*\d+)?)\s+\S", value)
+                if prefix and not _TECH_INFO_RE.search(value):
+                    episode = prefix.group(1).strip()
+                    break
+            if not episode and has_dash:
+                segment = re.split(r"\s+\[", parts[1].strip(), maxsplit=1)[0].strip()
+                if _is_numeric_episode(segment):
+                    episode = segment
+        # 番名：有“ - ”用前半段；否则括号前的正文（季节横幅除外）；
+        # 再退到括号片段拼接（排除数字集数与技术段）
         if has_dash:
             series = parts[0].strip()
-        elif brackets:
-            series = " / ".join(p for p in brackets if _is_series_bracket(p))
         else:
-            series = re.split(r"\s+\[", text, maxsplit=1)[0].strip()
+            first_bracket = re.search(r"[\[【]", text)
+            leading = text[: first_bracket.start()].strip() if first_bracket else text.strip()
+            if leading and not _SEASON_BANNER_RE.match(leading):
+                series = leading
+            elif brackets:
+                series = " / ".join(p for p in brackets if _is_series_bracket(p))
+            else:
+                series = leading
         series = series or text
         return series, episode or "完整作品"
     series = parts[0].strip() if parts else text
