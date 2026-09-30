@@ -1150,6 +1150,12 @@ main {
   color: #6b46a8;
 }
 
+.group-badge.group-sanmingzhi {
+  border-color: #e6c3a2;
+  background: #fdf3e9;
+  color: #9c5a1d;
+}
+
 .group-badge.group-tone-1 {
   border-color: #9fd0cb;
   background: #e9f6f4;

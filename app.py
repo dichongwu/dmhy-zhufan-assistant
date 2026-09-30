@@ -73,6 +73,17 @@ GROUPS = {
         "csv": DATA_DIR / "miaomeng" / "miaomeng_topics.csv",
         "extra_args": [],
     },
+    "sanmingzhi": {
+        "label": "三明治摆烂组",
+        "source": "https://share.dmhy.org/topics/list/team_id/864",
+        "rss": "https://share.dmhy.org/topics/rss/team_id/864",
+        "sheet": "三明治摆烂组",
+        "output_dir": DATA_DIR / "sanmingzhi",
+        "raw_name": "sanmingzhi_topics",
+        "grouped_name": "sanmingzhi_by_series",
+        "csv": DATA_DIR / "sanmingzhi" / "sanmingzhi_topics.csv",
+        "extra_args": [],
+    },
 }
 
 STATE_LOCK = threading.Lock()
@@ -168,7 +179,14 @@ def compute_since_days(group_id: str, fallback_days: int) -> int:
     """Incrementally fetch only releases published since that group's last
     successful update; falls back to the shared timestamp for older files."""
     data = load_versions()
-    last = data.get("last_update_by_group", {}).get(group_id) or data.get("last_update")
+    last = data.get("last_update_by_group", {}).get(group_id)
+    if not last:
+        # 新组（无本组时间戳，CSV 不存在或尚无数据行）不继承全局 last_update
+        # （那会被其它组的更新顶到很近），按请求窗口全量抓
+        csv_path = GROUPS[group_id]["csv"]
+        if not csv_path.exists() or not read_csv_rows(csv_path):
+            return fallback_days
+        last = data.get("last_update")
     if not last:
         return fallback_days
     try:
@@ -770,6 +788,8 @@ def site_group_id(title: str) -> str:
         return "7acg"
     if "喵萌奶茶屋" in title:
         return "miaomeng"
+    if "三明治摆烂组" in title:
+        return "sanmingzhi"
     return "site"
 
 

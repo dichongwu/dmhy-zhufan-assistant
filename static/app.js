@@ -56,8 +56,8 @@ let currentFollowItems = [];
 let currentDoneItems = [];
 const FOLLOWS_STORAGE_KEY = "dmhy.follows";
 const SITE_SEARCH_KEY = "dmhy.siteSearch";
-const GROUP_LABELS = { lolihouse: "LoliHouse", "7acg": "7³ACG", miaomeng: "喵萌奶茶屋" };
-const GROUP_BADGE_CLASSES = { lolihouse: "group-lolihouse", "7acg": "group-7acg", miaomeng: "group-miaomeng" };
+const GROUP_LABELS = { lolihouse: "LoliHouse", "7acg": "7³ACG", miaomeng: "喵萌奶茶屋", sanmingzhi: "三明治摆烂组" };
+const GROUP_BADGE_CLASSES = { lolihouse: "group-lolihouse", "7acg": "group-7acg", miaomeng: "group-miaomeng", sanmingzhi: "group-sanmingzhi" };
 const GROUP_FALLBACK_CLASSES = ["group-tone-1", "group-tone-2", "group-tone-3", "group-tone-4", "group-tone-5", "group-tone-6"];
 const LANGUAGE_BADGE_CLASSES = { 简体: "lang-simplified", 繁体: "lang-traditional", 日文: "lang-japanese", 无字幕: "lang-none" };
 
@@ -687,7 +687,7 @@ async function fetchStatus() {
 async function startUpdate() {
   const days = Number(elements.recentDaysInput.value);
   const groupValue = document.querySelector('input[name="recentGroup"]:checked')?.value || "";
-  const groups = groupValue ? [groupValue] : ["lolihouse", "7acg", "miaomeng"];
+  const groups = groupValue ? [groupValue] : ["lolihouse", "7acg", "miaomeng", "sanmingzhi"];
   if (!Number.isInteger(days) || days < 1 || days > 365) {
     showToast("更新时间需为 1 到 365 天");
     elements.recentDaysInput.focus();
