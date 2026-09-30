@@ -356,6 +356,36 @@ _NUMERIC_EPISODE_RE = re.compile(r"(?:第\s*)?\d+(?:\.\d+)?(?:(?:\s*[-~－～]\s
 _DASH_WRAPPED_EP_RE = re.compile(r"\s+-\s+((?:第\s*)?\d+(?:\.\d+)?(?:(?:\s*[-~－～]\s*|\s*-\s*)\d+)?)\s+-\s")
 # 季节横幅段（喵萌 ★04月新番★），位于括号前时不算番名
 _SEASON_BANNER_RE = re.compile(r"^★.*★$")
+_SEASON_BANNER_PREFIX_RE = re.compile(r"^★[^★]*★\s*")
+
+
+def _top_level_dash_split(text: str) -> list[str]:
+    """在括号层级 0 处按 “ - ” 切一刀；番名括号里的 “ - ” 不算
+    （如 Azur Lane - Bisoku 被切成两截导致同一部番裂成两个系列键）"""
+    matches = list(re.finditer(r"\s+-\s+", text))
+    if not matches:
+        return [text]
+    depth = 0
+    depths = []
+    for ch in text:
+        if ch in "[【":
+            depth += 1
+        elif ch in "]】":
+            depth = max(0, depth - 1)
+        depths.append(depth)
+    for m in matches:
+        if depths[m.start()] == 0:
+            return [text[: m.start()], text[m.end():]]
+    return [text]
+
+
+def _clean_series_name(value: str) -> str:
+    """番名清洗：去掉 ★XX月新番★ 横幅前缀；整体被 []/【】 包住的解开"""
+    value = _SEASON_BANNER_PREFIX_RE.sub("", value.strip()).strip()
+    wrapped = re.fullmatch(r"[\[【]([^\]】]+)[\]】]", value)
+    if wrapped:
+        value = wrapped.group(1).strip()
+    return value
 # 技术信息标记（不当作番名/集数）：分辨率、封装、编码、语言、字幕类型等
 _TECH_INFO_RE = re.compile(
     r"(?i)(?:webrip|bluray|bdrip|dvdrip|hevc|h\s*\.?\s*26[45]|av1|vp9|"
@@ -394,7 +424,7 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
             series = re.split(r"\s+\[", text, maxsplit=1)[0].strip()
             return series, "完整作品"
     else:
-        parts = re.split(r"\s+-\s+", text, maxsplit=1)
+        parts = _top_level_dash_split(text)
         has_dash = len(parts) > 1
         brackets = re.findall(r"[\[【]([^\]】]+)[\]】]", text)
         # 集数①：「- 08 -」夹注（番名 - 08 - [字幕]）；② 数字括号（从后往前，
@@ -420,7 +450,7 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
         # 番名：有“ - ”用前半段；否则括号前的正文（季节横幅除外）；
         # 再退到括号片段拼接（排除数字集数与技术段）
         if has_dash:
-            series = parts[0].strip()
+            series = _clean_series_name(parts[0])
         else:
             first_bracket = re.search(r"[\[【]", text)
             leading = text[: first_bracket.start()].strip() if first_bracket else text.strip()
