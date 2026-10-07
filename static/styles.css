@@ -1083,7 +1083,7 @@ main {
 .table-header,
 .result-row {
   display: grid;
-  grid-template-columns: 44px 132px minmax(320px, 1fr) 62px 58px 150px 90px 84px 184px;
+  grid-template-columns: 44px 132px minmax(320px, 1fr) 62px 58px 150px 90px 84px 164px;
   gap: 14px;
   align-items: center;
 }
@@ -1280,6 +1280,25 @@ main {
   color: #68726c;
 }
 
+/* 「无字幕」徽标本身即字幕匹配按钮 */
+button.release-language.lang-none {
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+button.release-language.lang-none:hover {
+  border-color: var(--accent);
+  background: var(--brand-50);
+  color: var(--accent-hover);
+}
+
+button.release-language.lang-none:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .copy-status {
   width: fit-content;
   padding: 3px 7px;
@@ -1300,8 +1319,7 @@ main {
 
 .row-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
   justify-content: flex-end;
 }
 
