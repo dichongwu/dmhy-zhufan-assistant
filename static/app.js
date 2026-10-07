@@ -263,7 +263,33 @@ function createResultRow(item, selectedSet, onToggle) {
   followButton.textContent = follows.has(item.series) ? "已追番" : "追番";
   followButton.classList.toggle("follow-active", follows.has(item.series));
   followButton.addEventListener("click", () => toggleFollow(item, followButton));
-  actions.append(copyButton, detailLink, followButton);
+  const subtitleButton = document.createElement("button");
+  subtitleButton.className = "row-action";
+  subtitleButton.type = "button";
+  subtitleButton.textContent = "字幕";
+  subtitleButton.title = "自动匹配字幕：在 115 盘找片源 → ACGrip 搜配套字幕 → 按视频文件名对齐 → 检查并安装缺失字体（无字幕的组用）";
+  subtitleButton.addEventListener("click", async () => {
+    subtitleButton.disabled = true;
+    try {
+      const response = await fetch("/api/subtitle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: item.title, series: item.series }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        showToast(data.error);
+        return;
+      }
+      showToast("开始匹配字幕，进度看上方任务状态");
+      fetchStatus();
+    } catch {
+      showToast("请求失败，稍后再试");
+    } finally {
+      subtitleButton.disabled = false;
+    }
+  });
+  actions.append(copyButton, detailLink, followButton, subtitleButton);
 
   row.append(selectCell, badge, main, encoding, language, date, size, status, actions);
   return row;

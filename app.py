@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import webbrowser
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from http import HTTPStatus
@@ -1124,6 +1125,452 @@ def initialize_state() -> None:
     threading.Thread(target=preload, daemon=True).start()
 
 
+# —— 字幕自动匹配（VCB-Studio 等无字幕发布）：
+#    115 盘按系列名找片源 → ACGrip 搜配套字幕帖 → 下载解压选简体 →
+#    按视频文件名对齐复制 → 检测缺失字体并从帖子字体包安装到本机 ——
+SUBTITLE_VIDEO_ROOTS = ["/Volumes/115"]
+ACGRIP_BASE = "https://bbs.acgrip.com"
+FONT_INSTALL_DIR = Path.home() / "Library" / "Fonts"
+SYSTEM_FONT_DIRS = [FONT_INSTALL_DIR, Path("/Library/Fonts"), Path("/System/Library/Fonts")]
+_EP_TAG_RE = re.compile(r"\[(\d{1,3}|OVA|SP\d*|NCOP|NCED|Movie)\]", re.I)
+_SIMP_CHARS = set("这们说对吗发经济过后还来见东车贝页风飞关广归会间离开让识别态条约现为应长质资总组")
+_TRAD_CHARS = set("這們說對嗎發經濟過後還來見東車貝頁風飛關廣歸會間離開讓識別態條約現為應長質資總組")
+
+
+def _norm_key(value: str) -> str:
+    return re.sub(r"[\s/·:：!！?？.、,，~～\-—_·]+", "", str(value)).lower()
+
+
+def _fetch_bytes(url: str, referer: str = ACGRIP_BASE + "/") -> bytes:
+    result = subprocess.run(
+        ["curl", "-sL", "--max-time", "90", "-e", referer, url],
+        capture_output=True, shell=False,
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise RuntimeError(f"下载失败: {url[:90]}")
+    return result.stdout
+
+
+def _download_to(url: str, path: Path, referer: str = ACGRIP_BASE + "/") -> None:
+    result = subprocess.run(
+        ["curl", "-sL", "--max-time", "300", "-e", referer, "-o", str(path), url],
+        capture_output=True, shell=False,
+    )
+    if result.returncode != 0 or not path.exists() or path.stat().st_size < 64:
+        raise RuntimeError(f"附件下载失败: {url[:90]}")
+
+
+def _season_fold(value: str) -> str:
+    """选帖评分用的激进归一：第N季/SN/罗马数字季号统一成阿拉伯数字"""
+    folded = _norm_key(value)
+    for n, cn in enumerate("一二三四五", 1):
+        folded = folded.replace(f"第{cn}季", str(n))
+    folded = folded.replace("s1", "1").replace("s2", "2").replace("s3", "3") \
+        .replace("s4", "4").replace("s5", "5")
+    folded = folded.replace("iii", "3").replace("ii", "2")
+    return folded
+
+
+def find_video_dir(series: str) -> Path | None:
+    """在 115 挂载里按系列任一别名找片源文件夹（带目录数/时长预算）"""
+    aliases = [a.strip() for a in series.split("/") if len(a.strip()) >= 2]
+    keys = {_norm_key(a) for a in aliases}
+    keys = {k for k in keys if len(k) >= 4}
+    if not keys:
+        return None
+    hits: list[Path] = []
+    budget = {"dirs": 0}
+    deadline = time.time() + 25.0
+
+    def walk(parent: str, depth: int) -> None:
+        if depth > 5 or budget["dirs"] > 8000 or time.time() > deadline or len(hits) >= 3:
+            return
+        try:
+            entries = list(os.scandir(parent))
+        except OSError:
+            return
+        for entry in entries:
+            if not entry.is_dir(follow_symlinks=False) or entry.name.startswith("."):
+                continue
+            budget["dirs"] += 1
+            if any(k in _norm_key(entry.name) for k in keys):
+                hits.append(Path(entry.path))
+            walk(entry.path, depth + 1)
+
+    for root in SUBTITLE_VIDEO_ROOTS:
+        if os.path.isdir(root):
+            walk(root, 1)
+    return hits[0] if hits else None
+
+
+def acgrip_search(keyword: str) -> list[tuple[str, str]]:
+    import html as _h
+    import urllib.parse as _up
+    url = f"{ACGRIP_BASE}/search.php?mod=forum&srchtxt={_up.quote(keyword)}&searchsubmit=yes"
+    text = _fetch_bytes(url).decode("utf-8", "replace")
+    seen: set[str] = set()
+    out = []
+    for match in re.finditer(
+        r'href="forum\.php\?mod=viewthread&amp;tid=(\d+)[^"]*"[^>]*>(.{0,180}?)</a>', text, re.S
+    ):
+        tid = match.group(1)
+        title = _h.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
+        if tid not in seen and len(title) >= 4:
+            seen.add(tid)
+            out.append((tid, title))
+    return out
+
+
+def acgrip_thread(tid: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """返回（楼层纯文本, [(aid, 文件名)]）"""
+    import html as _h
+    text = _fetch_bytes(f"{ACGRIP_BASE}/forum.php?mod=viewthread&tid={tid}").decode("utf-8", "replace")
+    floors = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", block)).strip()
+              for block in re.findall(r'<td class="t_f"[^>]*>(.*?)</td>', text, re.S)]
+    attachments = []
+    for match in re.finditer(
+        r'href="forum\.php\?mod=attachment&amp;aid=([^"]+)"[^>]*>\s*([^<]+)', text
+    ):
+        name = _h.unescape(match.group(2)).strip()
+        name = re.split(r"\s*\(\d", name)[0].strip()
+        if name:
+            attachments.append((_h.unescape(match.group(1)), name))
+    return floors, attachments
+
+
+def extract_archive(path: Path, dest: Path) -> None:
+    if path.name.lower().endswith(".zip"):
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(dest)
+    else:
+        subprocess.run(["unar", "-q", "-o", str(dest), str(path)],
+                       capture_output=True, shell=False)
+
+
+def choose_ass_set(ass_files: list[Path]) -> list[Path]:
+    """多套字幕时按父目录分组，选简体特征最强的那套；
+    同分倾向覆盖集数更多的（多 0.5/集，OVA/SP 齐的整套优先）"""
+    groups: dict[Path, list[Path]] = {}
+    for path in ass_files:
+        groups.setdefault(path.parent, []).append(path)
+    best, best_score = None, -1.0
+    for files in groups.values():
+        text = " ".join(
+            path.open(encoding="utf-8", errors="replace").read(150_000)
+            for path in files[:3]
+        )
+        score = (
+            sum(text.count(c) for c in _SIMP_CHARS)
+            - 2 * sum(text.count(c) for c in _TRAD_CHARS)
+            + 8 * len(files)
+        )
+        append_log(f"字幕套 {files[0].parent.name}: {len(files)} 个，得分 {score:.0f}")
+        if score > best_score:
+            best, best_score = files, score
+    return best or ass_files
+
+
+def ass_font_names(ass_files: list[Path]) -> set[str]:
+    names: set[str] = set()
+    for path in ass_files:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if line.startswith("Style:"):
+                    parts = line.split(",")
+                    if len(parts) > 1:
+                        names.add(parts[1].strip())
+    return names
+
+
+def _sfnt_family_names(path: Path) -> set[str]:
+    """按偏移精确读取 TTF/OTF/TTC 的 name 表（大字体文件不做整体读入）"""
+    import struct
+    names: set[str] = set()
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(12)
+            if head[:4] == b"ttcf":
+                count = struct.unpack(">I", head[8:12])[0]
+                offsets = struct.unpack(f">{min(count, 8)}I",
+                                        handle.read(4 * min(count, 8)))
+            else:
+                offsets = (0,)
+            for base in offsets:
+                handle.seek(base + 4)
+                table_count = struct.unpack(">H", handle.read(2))[0]
+                handle.seek(base + 12)
+                directory = handle.read(16 * table_count)
+                for index in range(table_count):
+                    record = directory[16 * index: 16 * index + 16]
+                    tag, _checksum, offset, length = struct.unpack(">4sIII", record)
+                    if tag != b"name" or length > 2_000_000:
+                        continue
+                    handle.seek(base + offset)
+                    table = handle.read(length)
+                    if len(table) < 6:
+                        continue
+                    count2, string_offset = struct.unpack(">HH", table[2:6])
+                    for row in range(count2):
+                        pid, _eid, _lid, nid, length2, offset2 = struct.unpack(
+                            ">6H", table[6 + 12 * row: 18 + 12 * row]
+                        )
+                        if nid not in (1, 4, 16) or length2 > 300:
+                            continue
+                        raw = table[string_offset + offset2: string_offset + offset2 + length2]
+                        try:
+                            value = raw.decode("utf-16-be") if pid == 3 else raw.decode("latin-1")
+                        except (UnicodeDecodeError, IndexError):
+                            continue
+                        if value.strip():
+                            names.add(value.strip())
+    except Exception:
+        pass
+    return names
+
+
+def installed_font_names() -> set[str]:
+    """用 fontconfig（fc-list）枚举本机字体家族名，播放器实际能看到的以它为准"""
+    try:
+        result = subprocess.run(
+            ["fc-list", ":", "family"], capture_output=True, text=True, shell=False, timeout=90
+        )
+    except Exception:
+        return set()
+    names: set[str] = set()
+    for line in result.stdout.splitlines():
+        for family in line.split(","):
+            family = family.strip().replace("\\", "")
+            if family:
+                names.add(_norm_key(family))
+    return names
+
+
+def _ep_tags(name: str) -> list[str]:
+    return [m.group(1).upper().replace(" ", "") for m in _EP_TAG_RE.finditer(name)]
+
+
+def _collect_ass(root: Path) -> list[Path]:
+    return [p for p in root.rglob("*.ass") if not p.name.startswith(".")]
+
+
+def subtitle_worker(title: str, series: str) -> None:
+    workspace = None
+    try:
+        aliases = [a.strip() for a in series.split("/") if len(a.strip()) >= 2]
+        append_log(f"片源系列: {series}")
+        video_dir = find_video_dir(series)
+        if video_dir is None:
+            raise RuntimeError("115 盘里没找到对应片源文件夹（按系列名搜索）")
+        append_log(f"✓ 片源: {video_dir}")
+        videos: list[Path] = sorted(
+            p for p in video_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".m2ts")
+        )
+        if not videos:
+            raise RuntimeError(f"片源文件夹里没有视频文件: {video_dir}")
+        tag_to_video = {}
+        for video in videos:
+            for tag in _ep_tags(video.name):
+                tag_to_video.setdefault(tag, video)
+
+        update_state(progress=20, message="正在 ACGrip 搜索字幕…")
+        # 搜索词逐级降级：别名 → 主别名去掉季号（帖名常用「第二季/S2」等不同写法）
+        candidates = list(aliases)
+        stripped = re.sub(
+            r"\s*(?:第[一二三四五]季|S\d{1,2}|II|III|Ⅳ|Ⅱ|Ⅲ)\s*$", "", aliases[0], flags=re.I
+        ).strip() if aliases else series
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
+        if len(aliases) > 1 and aliases[1] not in candidates:
+            candidates.append(aliases[1])
+        threads, keyword = [], series
+        for candidate in candidates:
+            keyword = candidate
+            found = acgrip_search(candidate)
+            found = [t for t in found
+                     if not re.search(r"请问|求字幕|求个|有吗|哪里有|？|\?", t[1])]
+            if found:
+                threads = found
+                break
+        append_log(f"搜索「{keyword}」命中 {len(threads)} 个帖子")
+        folded_aliases = [(_norm_key(a), _season_fold(a)) for a in aliases]
+        best, best_score = None, 0
+        for tid, thread_title in threads:
+            title_norm = _norm_key(thread_title)
+            title_fold = _season_fold(thread_title)
+            score = 0
+            if "vcb" in title_norm:
+                score += 2
+            score += sum(
+                1 for norm_a, fold_a in folded_aliases
+                if len(norm_a) >= 4 and norm_a in title_norm
+            ) + sum(
+                1 for _norm_a, fold_a in folded_aliases
+                if len(fold_a) >= 6 and fold_a in title_fold
+            )
+            if score > best_score:
+                best, best_score = (tid, thread_title), score
+        chosen = best or (threads[0] if threads else None)
+        if chosen is None:
+            raise RuntimeError("ACGrip 没有搜到相关字幕帖")
+        tid, thread_title = chosen
+        append_log(f"✓ 字幕帖: {thread_title[:60]} (tid={tid})")
+
+        update_state(progress=35, message="正在挑选并下载字幕包…")
+        floors, attachments = acgrip_thread(tid)
+        sub_archives, font_archives = [], []
+        for aid, name in attachments:
+            low = name.lower()
+            if not low.endswith((".zip", ".7z", ".rar")):
+                continue
+            if "font" in low or "字体" in name:
+                font_archives.append((aid, name))
+            elif not re.search(r"part\d+\.rar$", low):
+                sub_archives.append((aid, name))
+        sub_archives.sort(key=lambda pair: (
+            0 if "vcb" in pair[1].lower() else 1,
+            1 if "horriblesubs" in pair[1].lower() else 0,
+        ))
+        if not sub_archives:
+            raise RuntimeError("帖子里没有可用的字幕压缩包")
+        workspace = Path(tempfile.mkdtemp(prefix="dmhy_subs_"))
+        ass_all: list[Path] = []
+        for order, (aid, name) in enumerate(sub_archives[:3]):
+            safe_name = re.sub(r"[/\\]", "_", name)
+            archive_path = workspace / f"{order}_{safe_name}"
+            try:
+                _download_to(
+                    f"{ACGRIP_BASE}/forum.php?mod=attachment&aid={aid}&nothumb=yes",
+                    archive_path,
+                    referer=f"{ACGRIP_BASE}/forum.php?mod=viewthread&tid={tid}",
+                )
+                extract_dir = workspace / f"ex{order}"
+                extract_dir.mkdir(exist_ok=True)
+                extract_archive(archive_path, extract_dir)
+                ass_all.extend(_collect_ass(extract_dir))
+            except Exception as error:
+                append_log(f"跳过 {name}: {error!r}")
+        if not ass_all:
+            raise RuntimeError("字幕包下载/解压后没有找到 .ass 文件")
+        ass_set = choose_ass_set(ass_all)
+        append_log(f"共 {len(ass_all)} 个 ass，选用简体集 {len(ass_set)} 个")
+
+        update_state(progress=60, message="正在按视频文件名对齐字幕…")
+        copied = 0
+        for ass in sorted(ass_set):
+            target = next((tag_to_video[t] for t in _ep_tags(ass.name) if t in tag_to_video), None)
+            if target is None:
+                numeric = re.match(r"^(\d{1,3})\b", ass.stem)
+                if numeric and numeric.group(1).lstrip("0") in {
+                    t.lstrip("0") for t in tag_to_video if t.isdigit()
+                }:
+                    target = next(
+                        tag_to_video[t] for t in tag_to_video
+                        if t.isdigit() and t.lstrip("0") == numeric.group(1).lstrip("0")
+                    )
+            if target is None:
+                append_log(f"跳过（无对应视频）: {ass.name}")
+                continue
+            shutil.copy2(ass, target.with_suffix(".ass"))
+            copied += 1
+        append_log(f"✓ 已对齐复制 {copied} 个字幕到 {video_dir}")
+        if copied == 0:
+            raise RuntimeError("没有字幕能和视频集数对上（命名差异过大）")
+
+        update_state(progress=75, message="正在检查缺失字体…")
+        needed = ass_font_names(ass_set)
+        installed = installed_font_names()
+        missing = [n for n in sorted(needed) if _norm_key(n) not in installed]
+        still = []
+        if not missing:
+            append_log("✓ 字体齐全，无需安装")
+        else:
+            append_log(f"缺 {len(missing)} 个字体: {'、'.join(missing)}")
+            if not font_archives:
+                append_log("帖子没有字体包附件，跳过安装（播放器会用系统字体替代）")
+            else:
+                # 单卷字体包在前；缺的字体 ≤2 个时不再拉多卷大分卷（几十 MB 起，
+                # 多半也补不齐个别冷门字体，交给系统字体兜底）
+                is_part = lambda name: bool(re.search(r"part\d+\.rar$", name.lower()))
+                font_archives.sort(key=lambda pair: 1 if is_part(pair[1]) else 0)
+                for aid, name in font_archives:
+                    if not missing:
+                        break
+                    if is_part(name) and len(missing) <= 2:
+                        append_log("缺的字体少，跳过多卷字体分卷")
+                        break
+                    try:
+                        safe_name = re.sub(r"[/\\]", "_", name)
+                        archive_path = workspace / safe_name
+                        _download_to(
+                            f"{ACGRIP_BASE}/forum.php?mod=attachment&aid={aid}&nothumb=yes",
+                            archive_path,
+                            referer=f"{ACGRIP_BASE}/forum.php?mod=viewthread&tid={tid}",
+                        )
+                        extract_dir = workspace / ("fonts_" + re.sub(r"\W+", "", name)[:12])
+                        extract_dir.mkdir(exist_ok=True)
+                        extract_archive(archive_path, extract_dir)
+                        installed_count = 0
+                        FONT_INSTALL_DIR.mkdir(exist_ok=True)
+                        for font_file in extract_dir.rglob("*"):
+                            if font_file.suffix.lower() not in (".ttf", ".otf", ".ttc", ".otc"):
+                                continue
+                            destination = FONT_INSTALL_DIR / font_file.name
+                            if destination.exists():
+                                continue
+                            shutil.copy2(font_file, destination)
+                            installed_count += 1
+                        append_log(f"✓ {name}: 新装 {installed_count} 个字体")
+                    except Exception as error:
+                        append_log(f"字体包 {name} 失败: {error!r}")
+                    still = [n for n in missing
+                             if _norm_key(n) not in installed_font_names()]
+                    missing = still
+                if still:
+                    append_log(f"仍缺: {'、'.join(still)}（用系统字体替代）")
+
+        update_state(
+            status="success",
+            message=f"字幕匹配完成：对齐 {copied} 个" + (f"，仍缺字体 {len(still)} 个" if missing else ""),
+            progress=100,
+            finished_at=now_iso(),
+        )
+    except Exception as error:
+        append_log(f"失败: {error!r}")
+        update_state(
+            status="error",
+            message=f"字幕匹配失败：{error}",
+            error=str(error),
+            finished_at=now_iso(),
+        )
+    finally:
+        if workspace is not None:
+            shutil.rmtree(workspace, ignore_errors=True)
+
+
+def start_subtitle(title: str, series: str) -> bool:
+    with STATE_LOCK:
+        if STATE["status"] == "running":
+            return False
+        STATE.update(
+            {
+                "status": "running",
+                "message": "正在准备匹配字幕…",
+                "progress": 5,
+                "days": STATE.get("days", 7),
+                "groups": ["subtitle"],
+                "results": [],
+                "logs": [],
+                "workbook": STATE.get("workbook"),
+                "started_at": now_iso(),
+                "finished_at": None,
+                "error": None,
+            }
+        )
+    threading.Thread(target=subtitle_worker, args=(title, series), daemon=True).start()
+    return True
+
+
 class AppHandler(BaseHTTPRequestHandler):
     server_version = "DMHYUpdater/1.0"
 
@@ -1245,7 +1692,22 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = unquote(urlparse(self.path).path)
-        if route != "/api/update":
+        if route == "/api/subtitle":
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 16_384)
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                series = str(payload.get("series", "")).strip()
+                title = str(payload.get("title", "")).strip()
+                if not series:
+                    raise ValueError("缺少系列名")
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            if not start_subtitle(title, series):
+                self.send_json({"error": "已有任务正在运行"}, HTTPStatus.CONFLICT)
+                return
+            self.send_json(state_snapshot(), HTTPStatus.ACCEPTED)
+        elif route != "/api/update":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
