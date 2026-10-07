@@ -1083,7 +1083,7 @@ main {
 .table-header,
 .result-row {
   display: grid;
-  grid-template-columns: 44px 132px minmax(320px, 1fr) 62px 58px 150px 90px 84px 164px;
+  grid-template-columns: 44px 132px minmax(320px, 1fr) 62px 58px 150px 90px 84px 184px;
   gap: 14px;
   align-items: center;
 }
@@ -1300,7 +1300,8 @@ main {
 
 .row-actions {
   display: flex;
-  gap: 7px;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: flex-end;
 }
 
