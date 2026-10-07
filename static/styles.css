@@ -1156,6 +1156,12 @@ main {
   color: #9c5a1d;
 }
 
+.group-badge.group-vcb {
+  border-color: #e6a9b8;
+  background: #fdeef2;
+  color: #9f2b4d;
+}
+
 .group-badge.group-tone-1 {
   border-color: #9fd0cb;
   background: #e9f6f4;

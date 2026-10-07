@@ -84,6 +84,17 @@ GROUPS = {
         "csv": DATA_DIR / "sanmingzhi" / "sanmingzhi_topics.csv",
         "extra_args": [],
     },
+    "vcb": {
+        "label": "VCB-Studio",
+        "source": "https://share.dmhy.org/topics/list/team_id/581",
+        "rss": "https://share.dmhy.org/topics/rss/team_id/581",
+        "sheet": "VCB-Studio",
+        "output_dir": DATA_DIR / "vcb",
+        "raw_name": "vcb_topics",
+        "grouped_name": "vcb_by_series",
+        "csv": DATA_DIR / "vcb" / "vcb_topics.csv",
+        "extra_args": [],
+    },
 }
 
 STATE_LOCK = threading.Lock()
@@ -379,12 +390,24 @@ def _top_level_dash_split(text: str) -> list[str]:
     return [text]
 
 
+# 技术参数词（VCB 式标题把参数当裸文本跟在番名后，需从番名尾部裁掉）
+_TECH_TOKEN_RE = re.compile(
+    r"(?i)^(?:10|8|12)[-.·]?bit$|^\d{3,4}[pP]$|^(?:hevc|avc|av1|vp9|x26[45]|"
+    r"h\.?26[45]|bdrip|webrip|ma10p|flac|aac|fin)$|^v\d+$"
+)
+
+
 def _clean_series_name(value: str) -> str:
-    """番名清洗：去掉 ★XX月新番★ 横幅前缀；整体被 []/【】 包住的解开"""
+    """番名清洗：去掉 ★XX月新番★ 横幅前缀；整体被 []/【】 包住的解开；
+    裁掉尾部裸文本技术段（… 10-bit 1080p HEVC BDRip）"""
     value = _SEASON_BANNER_PREFIX_RE.sub("", value.strip()).strip()
     wrapped = re.fullmatch(r"[\[【]([^\]】]+)[\]】]", value)
     if wrapped:
         value = wrapped.group(1).strip()
+    tokens = value.split(" ")
+    for i, tok in enumerate(tokens):
+        if i and _TECH_TOKEN_RE.fullmatch(tok):
+            return " ".join(tokens[:i]).strip()
     return value
 # 技术信息标记（不当作番名/集数）：分辨率、封装、编码、语言、字幕类型等
 _TECH_INFO_RE = re.compile(
@@ -455,11 +478,11 @@ def parse_title(title: str, group_id: str) -> tuple[str, str]:
             first_bracket = re.search(r"[\[【]", text)
             leading = text[: first_bracket.start()].strip() if first_bracket else text.strip()
             if leading and not _SEASON_BANNER_RE.match(leading):
-                series = leading
+                series = _clean_series_name(leading)
             elif brackets:
                 series = " / ".join(p for p in brackets if _is_series_bracket(p))
             else:
-                series = leading
+                series = _clean_series_name(leading)
         series = series or text
         return series, episode or "完整作品"
     series = parts[0].strip() if parts else text
@@ -839,6 +862,8 @@ def site_group_id(title: str) -> str:
         return "miaomeng"
     if "三明治摆烂组" in title:
         return "sanmingzhi"
+    if "VCB-Studio" in title:
+        return "vcb"
     return "site"
 
 
