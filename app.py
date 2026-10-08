@@ -1035,6 +1035,15 @@ def update_worker(days: int, group_ids: list[str]) -> None:
             succeeded.append(group_id)
             set_last_update(group_id)
         except Exception as error:
+            if "date window contains no releases" in str(error):
+                # 增量窗口内没有新发布（低频组常态，如 VCB 月更合集）：
+                # 页面解析正常只是没新帖，按"无更新"成功处理，不走 RSS 兜底
+                append_log(
+                    f"{config['label']} 近 {since_days} 天无新发布"
+                )
+                succeeded.append(group_id)
+                set_last_update(group_id)
+                continue
             environment = os.environ.copy()
             environment["PYTHONUNBUFFERED"] = "1"
             ok, fallback_rows = rss_fallback_rows(config, since_days, environment)
