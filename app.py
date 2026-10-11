@@ -99,6 +99,9 @@ GROUPS = {
 }
 
 STATE_LOCK = threading.Lock()
+CANCEL_UPDATE = threading.Event()  # 停止按钮：置位后终止当前抓取子进程、跳过剩余组
+CURRENT_PROCESS: subprocess.Popen | None = None
+CURRENT_PROCESS_LOCK = threading.Lock()
 STATE = {
     "status": "idle",
     "message": "准备就绪",
@@ -621,6 +624,7 @@ def command_for(group_id: str, days: int) -> list[str]:
 
 
 def run_command(command: list[str], environment: dict[str, str]) -> tuple[int, str]:
+    global CURRENT_PROCESS
     process = subprocess.Popen(
         command,
         cwd=APP_DIR,
@@ -632,11 +636,17 @@ def run_command(command: list[str], environment: dict[str, str]) -> tuple[int, s
         errors="replace",
         bufsize=1,
     )
+    with CURRENT_PROCESS_LOCK:
+        CURRENT_PROCESS = process
     lines: list[str] = []
     assert process.stdout is not None
-    for line in process.stdout:
-        lines.append(line)
-        append_log(line)
+    try:
+        for line in process.stdout:
+            lines.append(line)
+            append_log(line)
+    finally:
+        with CURRENT_PROCESS_LOCK:
+            CURRENT_PROCESS = None
     return process.wait(), "".join(lines)
 
 
@@ -1020,7 +1030,11 @@ def update_worker(days: int, group_ids: list[str]) -> None:
     fallback_used: list[str] = []
     failed: list[str] = []
     total_new = 0
+    CANCEL_UPDATE.clear()
     for index, group_id in enumerate(group_ids):
+        if CANCEL_UPDATE.is_set():
+            append_log("已请求停止，跳过剩余字幕组")
+            break
         config = GROUPS[group_id]
         progress = 8 + round(index / len(group_ids) * 82)
         update_state(progress=progress, message=f"正在更新 {config['label']}…")
@@ -1035,6 +1049,9 @@ def update_worker(days: int, group_ids: list[str]) -> None:
             succeeded.append(group_id)
             set_last_update(group_id)
         except Exception as error:
+            if CANCEL_UPDATE.is_set():
+                append_log(f"{config['label']} 已中止")
+                break
             if "date window contains no releases" in str(error):
                 # 增量窗口内没有新发布（低频组常态，如 VCB 月更合集）：
                 # 页面解析正常只是没新帖，按"无更新"成功处理，不走 RSS 兜底
@@ -1060,6 +1077,17 @@ def update_worker(days: int, group_ids: list[str]) -> None:
                 append_log(str(error))
     update_state(progress=95, message="正在整理数据…")
     refresh_recent_cache()
+    if CANCEL_UPDATE.is_set():
+        update_state(
+            status="success",
+            message=f"已停止更新（完成 {len(succeeded)} 个组，新增 {total_new} 条）",
+            progress=100,
+            results=[],
+            workbook=str(latest_workbook()) if latest_workbook() else None,
+            finished_at=now_iso(),
+            error=None,
+        )
+        return
     if failed:
         detail = "；".join(failed)
         if succeeded:
@@ -1701,6 +1729,25 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = unquote(urlparse(self.path).path)
+        if route == "/api/stop":
+            with STATE_LOCK:
+                running = STATE["status"] == "running"
+            if not running:
+                self.send_json({"error": "没有正在运行的任务"}, HTTPStatus.CONFLICT)
+                return
+            if STATE.get("groups") == ["subtitle"]:
+                self.send_json({"error": "字幕匹配任务很快结束，不支持停止"}, HTTPStatus.CONFLICT)
+                return
+            CANCEL_UPDATE.set()
+            with CURRENT_PROCESS_LOCK:
+                process = CURRENT_PROCESS
+            if process is not None and process.poll() is None:
+                process.terminate()
+                append_log(">>> 已停止：终止当前抓取（组间检查点后跳过剩余组）")
+            else:
+                append_log(">>> 已请求停止")
+            self.send_json({"ok": True})
+            return
         if route == "/api/subtitle":
             try:
                 length = min(int(self.headers.get("Content-Length", "0")), 16_384)

@@ -5,6 +5,7 @@ const elements = {
   statusMessage: document.querySelector("#statusMessage"),
   statusMeta: document.querySelector("#statusMeta"),
   progressBar: document.querySelector("#progressBar"),
+  stopUpdate: document.querySelector("#stopUpdate"),
   errorMessage: document.querySelector("#errorMessage"),
   downloadButton: document.querySelector("#downloadButton"),
   recentPresets: document.querySelector("#recentPresets"),
@@ -689,6 +690,7 @@ function renderState(state) {
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, state.progress || 0))}%`;
   elements.updateButton.disabled = state.status === "running";
   elements.updateButton.textContent = state.status === "running" ? "正在更新…" : "更新";
+  elements.stopUpdate.hidden = !(state.status === "running" && state.groups?.[0] !== "subtitle");
   elements.errorMessage.hidden = !state.error;
   elements.errorMessage.textContent = state.error || "";
   elements.downloadButton.classList.toggle("disabled", !state.workbook);
@@ -760,6 +762,22 @@ function updateSearchPlaceholder() {
 }
 
 elements.updateButton.addEventListener("click", startUpdate);
+elements.stopUpdate.addEventListener("click", async () => {
+  elements.stopUpdate.disabled = true;
+  try {
+    const response = await fetch("/api/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await response.json();
+    showToast(data.error || "已请求停止，当前组收尾后即停");
+  } catch {
+    showToast("请求失败，稍后再试");
+  } finally {
+    elements.stopUpdate.disabled = false;
+  }
+});
 elements.recentPresets.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-days]");
   if (button) {
